@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Feed</title>
+    <link rel="icon" href="/frontend/favicon.ico" type="image/x-icon">
+
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            font-family:Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+            font-style: oblique;
+            font-size:1.5cm;
+            text-align: center;
+            color:orangered;
+            margin-top: 30px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            background: bisque;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .container label, .container input, .container button {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .container input, .container button {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .container button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        #posts {
+            margin-top: 20px;
+        }
+        .post {
+            background-color: whitesmoke;
+            border: 2px solid gold;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-Time Post Feed</h1>
+    <div class="container">
+        <label for="tags">Tags (comma-separated):</label>
+        <input id="tags" type="text" placeholder="e.g., sports, technology">
+
+        <label for="start_time">Start Time (UNIX Timestamp):</label>
+        <input id="start_time" type="number" placeholder="e.g., 1672531200">
+
+        <label for="end_time">End Time (UNIX Timestamp):</label>
+        <input id="end_time" type="number" placeholder="e.g., 1672601200">
+
+        <label for="k">Number of Posts:</label>
+        <input id="k" type="number" value="10" min="1">
+
+        <button onclick="loadPosts()">Load Posts</button>
+    </div>
+
+    <div id="posts" class="container"></div>
+
+    <script>
+        let pyodide;
+
+        async function initPyodide() {
+            try {
+                console.log("Initializing Pyodide...");
+                pyodide = await loadPyodide();
+                console.log("Pyodide loaded successfully.");
+
+                const backendCode = await fetch('main.py').then(res => {
+                    if (!res.ok) throw new Error(`Failed to load main.py: ${res.statusText}`);
+                    return res.text();
+                });
+                console.log("Backend code loaded:", backendCode);
+
+                await pyodide.runPythonAsync(backendCode);
+                console.log("Backend code executed successfully.");
+
+                // Test the backend by calling `get_posts` with no filters
+                const testResult = await pyodide.runPythonAsync('get_posts(k=1)');
+                console.log("Backend test result:", testResult);
+            } catch (error) {
+                console.error("Error initializing Pyodide:", error);
+            }
+        }
+
+        async function loadPosts() {
+            const tags = document.getElementById('tags').value.split(',').map(tag => tag.trim()).filter(Boolean);
+            const start_time = document.getElementById('start_time').value || null;
+            const end_time = document.getElementById('end_time').value || null;
+            const k = document.getElementById('k').value || 10;
+
+            const pythonCode = `
+tags = ${JSON.stringify(tags)}
+start_time = ${start_time || 'None'}
+end_time = ${end_time || 'None'}
+k = ${k}
+result = get_posts(tags=tags, start_time=start_time, end_time=end_time, k=k)
+result
+`;
+            console.log("Python Code to Execute:", pythonCode);
+
+            try {
+                const result = await pyodide.runPythonAsync(pythonCode);
+                console.log("Python Result:", result);
+                const posts = JSON.parse(result).posts;
+                displayPosts(posts);
+            } catch (error) {
+                console.error("Error loading posts:", error);
+                document.getElementById('posts').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        function displayPosts(posts) {
+            const postsDiv = document.getElementById('posts');
+            postsDiv.innerHTML = '';
+            if (posts.length === 0) {
+                postsDiv.innerHTML = '<p>No posts found.</p>';
+                return;
+            }
+            posts.forEach(post => {
+                const postDiv = document.createElement('div');
+                postDiv.classList.add('post');
+                postDiv.innerHTML = `<strong>Timestamp:</strong> ${new Date(post.timestamp * 1000).toLocaleString()}<br>
+                                     <strong>Tags:</strong> ${post.tags.join(', ')}<br>
+                                     <strong>Content:</strong> ${post.content}`;
+                postsDiv.appendChild(postDiv);
+            });
+        }
+
+        initPyodide();
+    </script>
+</body>
+</html>
