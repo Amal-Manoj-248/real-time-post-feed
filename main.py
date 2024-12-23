@@ -1,3 +1,4 @@
+from flask import Flask, request, jsonify
 import json
 import random
 import time
@@ -6,6 +7,8 @@ from typing import List
 from collections import defaultdict
 from bisect import bisect_left, bisect_right
 from functools import lru_cache
+
+app = Flask(__name__)
 
 # Data storage
 posts = []
@@ -24,7 +27,7 @@ class PostModel:
 def add_post(post: PostModel):
     posts.append(post)
     timestamp_index.append((post.timestamp, post.id))
-    timestamp_index.sort()  # TODO: Replace with a more efficient structure if needed.
+    timestamp_index.sort()
     for tag in post.tags:
         inverted_index[tag].append(post.id)
     return {"message": "Post added successfully.", "post_id": post.id}
@@ -59,7 +62,7 @@ def get_posts(tags: List[str] = None, start_time: int = None, end_time: int = No
         {"id": post.id, "timestamp": post.timestamp, "tags": post.tags, "content": post.content}
         for post in filtered_posts[:k]
     ]
-    return json.dumps({"posts": result, "total_count": len(filtered_post_ids)})
+    return {"posts": result, "total_count": len(filtered_post_ids)}
 
 # Predefined tags and content
 TAGS = ["sports", "technology", "news", "entertainment", "science", "health", "education"]
@@ -85,8 +88,37 @@ def send_posts(num_posts: int):
     for _ in range(num_posts):
         add_post(generate_post())
 
+# API Routes
+@app.route('/get_posts', methods=['GET'])
+def api_get_posts():
+    try:
+        tags = request.args.get('tags')
+        start_time = request.args.get('start_time', type=int)
+        end_time = request.args.get('end_time', type=int)
+        k = request.args.get('k', 10, type=int)
+        tags = json.loads(tags) if tags else None
+
+        result = get_posts(tags=tags, start_time=start_time, end_time=end_time, k=k)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/add_post', methods=['POST'])
+def api_add_post():
+    try:
+        data = request.get_json()
+        timestamp = data['timestamp']
+        tags = data['tags']
+        content = data['content']
+        post = PostModel(timestamp=timestamp, tags=tags, content=content)
+        result = add_post(post)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 # Debugging and initialization
 if __name__ == "__main__":
     print("Initializing backend...")
-    send_posts(10000)  # Generate 10000 random posts for testing
-    print("Backend initialized with 10000 test posts.")
+    send_posts(10000)  # Generate 10,000 random posts for testing
+    print("Backend initialized with 10,000 test posts.")
+    app.run(host="0.0.0.0", port=5000)
